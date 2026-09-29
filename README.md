@@ -4,10 +4,8 @@ A lightweight static academic website, migrated from https://jie-ren.weebly.com/
 
 ## Publish on GitHub Pages
 
-Repository: `rj1231rj/rj1231rj.github.io`
-Website: https://rj1231rj.github.io/
-
-In repository **Settings → Pages**, select **Deploy from a branch**, then **main** and **/(root)**, and save. Keep HTTPS enabled.
+Repository: `renjie-econ/renjie-econ.github.io`
+Website: hhttps://renjie-econ.github.io/In repository **Settings → Pages**, select **Deploy from a branch**, then **main** and **/(root)**, and save. Keep HTTPS enabled.
 
 ## Edit the website
 
