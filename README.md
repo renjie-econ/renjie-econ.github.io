@@ -14,7 +14,7 @@ In repository **Settings → Pages**, select **Deploy from a branch**, then **ma
 - `index.html`: biography, research, abstracts, contact details, and links.
 - `style.css`: typography, colors, spacing, and mobile layout.
 - `jie-ren.jpg`: original portrait.
-- `cv-jie-ren.pdf`: original CV downloaded from Weebly.
+- `cv-jie-ren.pdf`: public CV download. The 17 November 2026 update uses `cv_JieREN.pdf`, which displays “Sep 2026” in the page header.
 - `within-marriage-age-gap.pdf` and `gender-education-gap.pdf`: original paper PDFs downloaded from Weebly.
 
 To replace a PDF or ZIP: open the repository, choose **Add file → Upload files**, upload the updated file with exactly the same filename, and commit to **main**. You do not need to delete the old file first. For example, replace `cv-jie-ren.pdf` to update your CV.
@@ -23,7 +23,7 @@ To update biography, paper titles, or publication status: open `index.html`, cli
 
 ## Migration notes
 
-The biography, publication list, working-paper status, and ongoing projects retain the information displayed on the old website. The original CV and paper PDFs are preserved unchanged; the CV still includes the old Weebly address and may need an updated version. Coauthor and media links are retained. The replication package is now hosted locally as `replication-package.zip`, copied unchanged from the original public Dropbox archive on 29 September 2026. Third-party link availability in mainland China varies.
+The biography, publication list, and working-paper status were migrated from the old website. The work-in-progress list follows the three selected projects in the latest CV, followed by “Marriage, Parenthood and development: cross-country evidence” with Ying Feng. The paper PDFs, coauthor links, and media links were retained during migration. The replication package is hosted locally as `replication-package.zip`, copied unchanged from the original public Dropbox archive on 29 September 2026. Third-party link availability in mainland China varies.
 
 ## Mainland China access
 
