@@ -23,7 +23,7 @@ To update biography, paper titles, or publication status: open `index.html`, cli
 
 ## Migration notes
 
-The biography, publication list, and working-paper status were migrated from the old website. The work-in-progress list follows the three selected projects in the latest CV, followed by “Marriage, Parenthood and development: cross-country evidence” with Ying Feng. The paper PDFs, coauthor links, and media links were retained during migration. The replication package is hosted locally as `replication-package.zip`, copied unchanged from the original public Dropbox archive on 29 September 2026. Third-party link availability in mainland China varies.
+The biography, publication list, and working-paper status were migrated from the old website. The work-in-progress list follows the three selected projects in the latest CV, followed by “Marriage, Parenthood and Development: Cross-country Evidence” with Ying Feng. The paper PDFs, coauthor links, and media links were retained during migration. The replication package is hosted locally as `replication-package.zip`, copied unchanged from the original public Dropbox archive on 29 September 2026. Third-party link availability in mainland China varies.
 
 ## Mainland China access
 
