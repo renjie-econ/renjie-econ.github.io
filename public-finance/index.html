@@ -23,64 +23,192 @@ input{border:1px solid #a2b39e;color:inherit;background:white}button{margin-top:
 <script>
 (() => {
   'use strict';
-  const form = document.getElementById('gate');
-  const field = document.getElementById('passcode');
-  const button = form.querySelector('button');
-  const status = document.getElementById('feedback');
+  const release = '7adfba27ec02f6bf';
+  const salt = Uint8Array.from(atob('RWvGgHcETlvkSXY7v0RLpw=='), c => c.charCodeAt(0));
   const encoder = new TextEncoder();
-  const decoder = new TextDecoder('utf-8', {fatal:true});
-  let encrypted;
-  const formatError = 'The course package could not be loaded. Reload the page and try again.';
-  if (!window.crypto?.subtle) {
+  const gate = document.getElementById('gate');
+  const input = document.getElementById('passcode');
+  const button = gate.querySelector('button');
+  const status = document.getElementById('feedback');
+  const asset = name => new URL(name + '-' + release + '.bin', location.href).href;
+  let mapPacket;
+
+  // Each unlocked map gets a private in-memory link. Ordinary anchors can open it
+// in another tab, including via the context menu, without sharing the passcode.
+function createSlideLink(loadSlides) {
+  const name = 'course-slides-' + crypto.randomUUID();
+  const channel = new BroadcastChannel(name);
+  let pdfLink;
+  channel.onmessage = async ({data}) => {
+    if (data?.type !== 'request' || typeof data.id !== 'string') return;
+    channel.postMessage({id: data.id, type: 'loading'});
+    try {
+      if (!pdfLink) {
+        // The map owns the PDF URL so the native viewer can reload or download it.
+        // Concurrent slide tabs share a download. A failed download can be retried.
+        pdfLink = Promise.resolve().then(loadSlides).then(blob => URL.createObjectURL(blob))
+          .catch(error => { pdfLink = undefined; throw error; });
+      }
+      channel.postMessage({id: data.id, type: 'ready', url: await pdfLink});
+    } catch {
+      channel.postMessage({id: data.id, type: 'error'});
+    }
+  };
+
+  // The function is included in the transient link document below. It runs
+  // independently of window.opener (all slide links use rel="noopener").
+  function openSlideTab(session) {
+    const channel = new BroadcastChannel(session);
+    const message = document.getElementById('message');
+    const retry = document.getElementById('retry');
+    const id = crypto.randomUUID();
+    let timer;
+    function showRetry(text) {
+      message.textContent = text;
+      retry.hidden = false;
+    }
+    function request() {
+      clearTimeout(timer);
+      retry.hidden = true;
+      message.textContent = 'Opening lecture slides…';
+      timer = setTimeout(() => showRetry('Reopen the course map, enter the passcode, and select the slide link again.'), 12000);
+      channel.postMessage({id, type: 'request'});
+    }
+    channel.onmessage = ({data}) => {
+      if (data?.id !== id) return;
+      clearTimeout(timer);
+      if (data.type === 'loading') {
+        message.textContent = 'Loading lecture slides…';
+        timer = setTimeout(() => showRetry('The slides are taking a while to load. Keep the course map open and try again.'), 60000);
+      } else if (data.type === 'error') {
+        showRetry('The slides could not be loaded. Check your connection and try again.');
+      } else if (data.type === 'ready') {
+        const page = /^#page=[1-9]\d*$/.test(location.hash) ? location.hash : '';
+        channel.close();
+        location.replace(data.url + page);
+      }
+    };
+    retry.onclick = request;
+    request();
+  }
+
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lecture slides · Public Finance</title>
+<style>body{margin:10vh auto;padding:0 24px;max-width:34rem;color:#173d31;background:#f7f7ef;font:18px/1.5 system-ui}button{font:inherit;padding:4px 12px}</style></head>
+<body><main><h1>Lecture slides</h1><p id="message" role="status">Opening lecture slides…</p>
+<button id="retry" hidden>Try again</button></main>
+<script>(${openSlideTab.toString()})(${JSON.stringify(name)})<\/script></body></html>`;
+  return URL.createObjectURL(new Blob([html], {type: 'text/html;charset=utf-8'}));
+}
+
+
+  async function download(name) {
+    const response = await fetch(asset(name));
+    if (!response.ok) throw new Error('Course file unavailable');
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  async function unlockKey(password) {
+    const material = await crypto.subtle.importKey('raw', password, 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({name:'PBKDF2', hash:'SHA-256', salt, iterations:600000},
+      material, {name:'AES-GCM', length:256}, false, ['decrypt']);
+  }
+
+  function decrypt(key, label, packet) {
+    return crypto.subtle.decrypt({name:'AES-GCM', iv:packet.subarray(0,12),
+      additionalData:encoder.encode(release + '/' + label)}, key, packet.subarray(12));
+  }
+
+  function loadQuestionFigures(key) {
+    const offsets = window.PF_FIGURES;
+    const ready = new Map();
+    const pendingImages = new WeakSet();
+    let fullFile;
+    async function fetchFigure(id) {
+      const [start, length] = offsets[id];
+      const end = start + length - 1;
+      let packet;
+      if (!fullFile) {
+        const response = await fetch(asset('figures'), {headers:{Range:'bytes=' + start + '-' + end}});
+        if (response.status === 206) {
+          const range = response.headers.get('Content-Range') || '';
+          if (!range.startsWith('bytes ' + start + '-' + end + '/')) throw new Error('Incomplete figure');
+          packet = new Uint8Array(await response.arrayBuffer());
+        } else if (response.status === 200) {
+          // Some proxies return the entire file even when the browser asks for a range.
+          fullFile = new Uint8Array(await response.arrayBuffer());
+        } else throw new Error('Figure unavailable');
+      }
+      if (!packet) packet = fullFile.subarray(start, end + 1);
+      if (packet.length !== length) { fullFile = undefined; throw new Error('Incomplete figure'); }
+      const png = await decrypt(key, 'figure/' + id, packet);
+      return URL.createObjectURL(new Blob([png], {type:'image/png'}));
+    }
+    async function show(img) {
+      if (img.hasAttribute('src') || pendingImages.has(img)) return;
+      pendingImages.add(img);
+      const id = Number(img.dataset.pfFigure);
+      if (!ready.has(id)) {
+        ready.set(id, fetchFigure(id).catch(error => { ready.delete(id); throw error; }));
+      }
+      try {
+        img.src = await ready.get(id);
+      } catch {
+        if (img.isConnected) {
+          const retry = document.createElement('button');
+          retry.textContent = 'Reload figure';
+          retry.type = 'button';
+          retry.onclick = () => { retry.remove(); show(img); };
+          img.after(retry);
+        }
+      } finally { pendingImages.delete(img); }
+    }
+    const selector = 'img[data-pf-figure]';
+    const scan = node => {
+      if (node.nodeType !== 1) return;
+      if (node.matches(selector)) show(node);
+      else node.querySelectorAll(selector).forEach(show);
+    };
+    // Question cards are mounted when selected, including on direct question links.
+    new MutationObserver(records => {
+      for (const record of records) record.addedNodes.forEach(scan);
+    }).observe(document.querySelector('main'), {childList:true, subtree:true});
+    scan(document.querySelector('main'));
+  }
+
+  if (!window.crypto?.subtle || !window.DecompressionStream) {
     button.disabled = true;
-    status.textContent = 'Open the secure HTTPS course address in a current browser.';
+    status.textContent = 'Use an up-to-date browser and open the HTTPS course address.';
     return;
   }
-  form.addEventListener('submit', async event => {
+  gate.addEventListener('submit', async event => {
     event.preventDefault();
     if (button.disabled) return;
     button.disabled = true;
-    status.textContent = 'Opening the course materials…';
-    const password = encoder.encode(field.value);
-    field.value = '';
-    let stage = 'fetch';
+    status.textContent = 'Opening the course map…';
+    const password = encoder.encode(input.value);
+    input.value = '';
     try {
-      if (!encrypted) {
-        const response = await fetch('course.bin?v=73bcc9d770cd283c6b539424', {credentials:'same-origin'});
-        if (!response.ok) throw new Error('Read failed');
-        encrypted = new Uint8Array(await response.arrayBuffer());
-      }
-      const header = encrypted.subarray(0, 56);
-      if (header.length !== 56 || decoder.decode(header.subarray(0, 8)) !== 'PFATLAS1') throw new Error('Invalid package');
-      const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
-      const split = 56 + view.getUint32(48);
-      if (split <= 72 || split + view.getUint32(52) !== encrypted.length) throw new Error('Invalid length');
-      stage = 'decrypt';
-      const material = await crypto.subtle.importKey('raw', password, 'PBKDF2', false, ['deriveKey']);
-      password.fill(0);
-      const key = await crypto.subtle.deriveKey({
-        name:'PBKDF2', hash:'SHA-256', salt:header.subarray(8,24), iterations:600000
-      }, material, {name:'AES-GCM',length:256}, false, ['decrypt']);
-      const open = (offset, start, end) => crypto.subtle.decrypt({
-        name:'AES-GCM', iv:header.subarray(offset,offset+12), additionalData:header, tagLength:128
-      }, key, encrypted.subarray(start,end));
-      // Authenticate the relatively small HTML first. Only process the PDF for a valid key.
-      const html = decoder.decode(await open(24,56,split));
-      const pdfBytes = await open(36,split,encrypted.length);
-      const pdfURL = URL.createObjectURL(new Blob([pdfBytes], {type:'application/pdf'}));
-      stage = 'display';
-      // Keep the course URL (and any incoming hash) as the atlas navigation context.
-      // Blob URLs are only for the PDF, which opens in the browser's native viewer.
-      const atlas = html.replaceAll('__PF_ATLAS_SLIDES_BLOB__', pdfURL);
-      encrypted = null;
+      mapPacket ||= download('map').catch(error => { mapPacket = null; throw error; });
+      const [key, packet] = await Promise.all([unlockKey(password), mapPacket]);
+      const compressed = await decrypt(key, 'map', packet);
+      const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+      const html = await new Response(stream).text();
+      const viewer = createSlideLink(async () => {
+        const bytes = await decrypt(key, 'slides', await download('slides'));
+        return new Blob([bytes], {type:'application/pdf'});
+      });
+      mapPacket = null;
       document.open();
-      document.write(atlas);
+      document.write(html.replaceAll('__PF_ATLAS_SLIDES_BLOB__', viewer));
       document.close();
+      loadQuestionFigures(key);
     } catch (error) {
-      status.textContent = stage === 'decrypt' ? 'The passcode did not unlock this course package. Try again.'
-        : stage === 'display' ? 'The atlas could not be opened. Reload the page and try again.' : formatError;
+      status.textContent = error.name === 'OperationError' ? 'The passcode did not unlock this course. Try again.'
+        : 'The course map could not be opened. Try again or reload the page.';
       button.disabled = false;
-      field.focus();
+      input.focus();
     } finally {
       password.fill(0);
     }
